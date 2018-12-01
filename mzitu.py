@@ -3,6 +3,7 @@ import os
 import time
 import threading
 from multiprocessing import Pool, cpu_count
+import json
 
 import requests
 from bs4 import BeautifulSoup
@@ -16,6 +17,13 @@ HEADERS = {
 
 # 下载图片保存路径
 DIR_PATH = r"D:\mzitu"
+PAGE_COUNT = 202
+
+class MMInfo(object):
+    """docstring for MMInfo"""
+    def __init__(self, arg):
+        super(MMInfo, self).__init__()
+        self.arg = arg        
 
 
 def get_urls():
@@ -23,7 +31,7 @@ def get_urls():
     获取 mzitu 网站下所有套图的 url
     """
     page_urls = ['http://www.mzitu.com/page/{cnt}'.format(cnt=cnt)
-                 for cnt in range(1, 193)]
+                 for cnt in range(151, PAGE_COUNT)]
     print("Please wait for second ...")
     img_urls = []
     for page_url in page_urls:
@@ -43,6 +51,7 @@ lock = threading.Lock()     # 全局资源锁
 
 
 def urls_crawler(url):
+    print('crawler url %s' % url)
     """
     爬虫入口，主要爬取操作
     """
@@ -50,8 +59,40 @@ def urls_crawler(url):
         r = requests.get(url, headers=HEADERS, timeout=10).text
         folder_name = BeautifulSoup(r, 'lxml').find(
             'div', class_="main-image").find('img')['alt'].replace("?", " ")
+        mm = {}
+
+        try:
+            title = BeautifulSoup(r, 'lxml').find(
+                'h2', class_="main-title").text
+            print('title: %s' % title)
+            category = BeautifulSoup(r, 'lxml').find(
+                'div', class_="main-meta").find('a').text
+            print('category: %s' % category)            
+            publishTime = BeautifulSoup(r, 'lxml').find(
+                'div', class_="main-meta").find_all('span')[-2].text.replace('发布于 ', '')
+            print('publishTime: %s' % publishTime)
+            viewCount = BeautifulSoup(r, 'lxml').find(
+                'div', class_="main-meta").find_all('span')[-1].text.replace('次浏览', '').replace(',', '')
+            print('viewCount: %s' % viewCount)
+            tags = BeautifulSoup(r, 'lxml').find(
+                'div', class_="main-tags").find_all('a')
+            tags = [tag.get_text() for tag in tags]
+            print('tags: ' , tags)
+
+            mm = {"title": title,
+             'category':category,
+              'publishTime': publishTime,
+               'viewCount':viewCount,
+               'tags':tags}
+            print('mm', json.dumps(mm))            
+
+
+        except Exception as e:
+            print(e)        
+
         with lock:
             if make_dir(folder_name):
+                save_data(json.dumps(mm))
                 # 套图里图片张数
                 max_count = BeautifulSoup(r, 'lxml').find(
                     'div', class_='pagenavi').find_all('span')[-2].get_text()
@@ -67,6 +108,14 @@ def urls_crawler(url):
                     img_urls.append(img_url)
                 for cnt, url in enumerate(img_urls):
                     save_pic(url, cnt)
+    except Exception as e:
+        print(e)
+
+def save_data(mm):
+    try:
+        file_name = 'mm_data.json'
+        with open(file_name, 'a') as f:
+            f.write(mm)
     except Exception as e:
         print(e)
 
